@@ -1,0 +1,380 @@
+============================================================
+双色球投注方案生成工具 - VBA代码
+============================================================
+
+使用方法：
+1. 打开Excel文件
+2. 按 Alt+F11 打开VBA编辑器
+3. 插入新模块（Insert → Module）
+4. 将下面的代码复制粘贴到模块中
+5. 保存并关闭VBA编辑器
+
+============================================================
+
+
+' ========================================
+' 双色球投注方案自动生成VBA代码
+' ========================================
+
+Option Explicit
+
+' 主流程：生成投注方案
+Sub 生成投注方案()
+    Dim ws输入 As Worksheet, ws24码 As Worksheet, ws方案 As Worksheet
+    Dim codes24() As Integer
+    Dim i As Long, j As Long
+    Dim lastRow As Long, startRow As Long
+    Dim numBets As Integer
+    Dim periodNum As String
+    
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    
+    Set ws输入 = ThisWorkbook.Worksheets("1-数据输入")
+    Set ws24码 = ThisWorkbook.Worksheets("2-24码分析")
+    Set ws方案 = ThisWorkbook.Worksheets("3-投注方案")
+    
+    ' 获取24码
+    ReDim codes24(1 To 24)
+    For i = 1 To 24
+        If IsNumeric(ws24码.Cells(4 + i, 7).Value) Then
+            codes24(i) = CInt(ws24码.Cells(4 + i, 7).Value)
+        Else
+            Exit For
+        End If
+    Next i
+    
+    If i <= 24 Then
+        MsgBox "请先在【1-数据输入】表中输入完整的30期数据！", vbExclamation
+        Application.ScreenUpdating = True
+        Application.Calculation = xlCalculationAutomatic
+        Exit Sub
+    End If
+    
+    ' 清除旧方案
+    lastRow = ws方案.Cells(ws方案.Rows.Count, 1).End(xlUp).Row
+    If lastRow > 7 Then
+        ws方案.Range("A8:J" & lastRow).ClearContents
+    End If
+    
+    ' 生成方案
+    startRow = 8
+    For i = 5 To 34  ' 最多30期
+        periodNum = ws输入.Cells(i, 1).Value
+        If periodNum = "" Then Exit For
+        
+        ' 每期生成10注（8注模板A + 2注模板B）
+        numBets = 10
+        
+        For j = 1 To numBets
+            ws方案.Cells(startRow, 1).Value = periodNum  ' 期号
+            ws方案.Cells(startRow, 2).Value = j  ' 注号
+            
+            ' 模板类型
+            If j <= 8 Then
+                ws方案.Cells(startRow, 3).Value = "A"
+                Call Generate6Numbers(codes24, ws方案, startRow, "A")
+            Else
+                ws方案.Cells(startRow, 3).Value = "B"
+                Call Generate6Numbers(codes24, ws方案, startRow, "B")
+            End If
+            
+            ' 蓝球（1-16随机）
+            ws方案.Cells(startRow, 10).Value = Int(Rnd() * 16) + 1
+            
+            startRow = startRow + 1
+        Next j
+    Next i
+    
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    
+    MsgBox "投注方案生成完成！共生成 " & (startRow - 8) & " 注", vbInformation
+End Sub
+
+' 生成6个红球号码
+Sub Generate6Numbers(codes24() As Integer, ws As Worksheet, row As Long, template As String)
+    Dim selected(1 To 6) As Integer
+    Dim i As Integer, j As Integer, attempt As Integer
+    Dim valid As Boolean
+    Dim tempList() As Integer
+    Dim n As Integer
+    
+    ReDim tempList(1 To 24)
+    For i = 1 To 24
+        tempList(i) = codes24(i)
+    Next i
+    
+    ' 最多尝试100次
+    For attempt = 1 To 100
+        ' 洗牌
+        For i = 1 To 24
+            j = Int(Rnd() * 24) + 1
+            n = tempList(i)
+            tempList(i) = tempList(j)
+            tempList(j) = n
+        Next i
+        
+        ' 取前6个
+        For i = 1 To 6
+            selected(i) = tempList(i)
+        Next i
+        
+        ' 排序
+        Call BubbleSort(selected)
+        
+        ' 验证
+        If ValidateNumbers(selected, template) Then
+            valid = True
+            Exit For
+        End If
+    Next attempt
+    
+    ' 如果验证失败，使用简单规则
+    If Not valid Then
+        For i = 1 To 6
+            selected(i) = codes24(i)
+        Next i
+        Call BubbleSort(selected)
+    End If
+    
+    ' 填充到工作表
+    For i = 1 To 6
+        ws.Cells(row, 3 + i).Value = selected(i)
+    Next i
+End Sub
+
+' 冒泡排序
+Sub BubbleSort(arr() As Integer)
+    Dim i As Integer, j As Integer, temp As Integer
+    For i = 1 To 5
+        For j = i + 1 To 6
+            If arr(i) > arr(j) Then
+                temp = arr(i)
+                arr(i) = arr(j)
+                arr(j) = temp
+            End If
+        Next j
+    Next i
+End Sub
+
+' 验证号码是否符合模板要求
+Function ValidateNumbers(nums() As Integer, template As String) As Boolean
+    Dim oddCount As Integer, evenCount As Integer
+    Dim smallCount As Integer, largeCount As Integer
+    Dim consecutiveCount As Integer, sameTailCount As Integer
+    Dim i As Integer
+    
+    ' 统计奇偶
+    For i = 1 To 6
+        If nums(i) Mod 2 = 1 Then
+            oddCount = oddCount + 1
+        Else
+            evenCount = evenCount + 1
+        End If
+    Next i
+    
+    ' 统计大小
+    For i = 1 To 6
+        If nums(i) <= 16 Then
+            smallCount = smallCount + 1
+        Else
+            largeCount = largeCount + 1
+        End If
+    Next i
+    
+    ' 统计连号
+    consecutiveCount = 0
+    For i = 1 To 5
+        If nums(i + 1) - nums(i) = 1 Then
+            consecutiveCount = consecutiveCount + 1
+        End If
+    Next i
+    
+    ' 统计同尾
+    sameTailCount = 0
+    For i = 1 To 5
+        Dim j As Integer
+        For j = i + 1 To 6
+            If nums(i) Mod 10 = nums(j) Mod 10 Then
+                sameTailCount = sameTailCount + 1
+            End If
+        Next j
+    Next i
+    
+    ' 验证规则
+    If template = "A" Then
+        ' 模板A：3奇3偶，3小3大，连号≤1，同尾≤1
+        If oddCount = 3 And evenCount = 3 And _
+           smallCount = 3 And largeCount = 3 And _
+           consecutiveCount <= 1 And sameTailCount <= 1 Then
+            ValidateNumbers = True
+        Else
+            ValidateNumbers = False
+        End If
+    ElseIf template = "B" Then
+        ' 模板B：2奇4偶，2小4大，连号≤1，同尾≤2
+        If oddCount = 2 And evenCount = 4 And _
+           smallCount = 2 And largeCount = 4 And _
+           consecutiveCount <= 1 And sameTailCount <= 2 Then
+            ValidateNumbers = True
+        Else
+            ValidateNumbers = False
+        End If
+    Else
+        ValidateNumbers = False
+    End If
+End Function
+
+' 中奖判断
+Sub 判断中奖()
+    Dim ws方案 As Worksheet, ws开奖 As Worksheet, ws历史 As Worksheet
+    Dim i As Long, j As Long
+    Dim periodNum As String, drawPeriod As String
+    Dim betReds() As Integer, drawReds() As Integer
+    Dim betBlue As Integer, drawBlue As Integer
+    Dim matchRed As Integer, matchBlue As Boolean
+    Dim prizeLevel As String
+    Dim lastHistoryRow As Long
+    
+    Application.ScreenUpdating = False
+    
+    Set ws方案 = ThisWorkbook.Worksheets("3-投注方案")
+    Set ws开奖 = ThisWorkbook.Worksheets("4-开奖结果")
+    Set ws历史 = ThisWorkbook.Worksheets("5-历史记录")
+    
+    ' 获取历史记录最后一行
+    lastHistoryRow = ws历史.Cells(ws历史.Rows.Count, 1).End(xlUp).Row + 1
+    If lastHistoryRow < 4 Then lastHistoryRow = 4
+    
+    ' 遍历投注方案
+    For i = 8 To 500
+        periodNum = ws方案.Cells(i, 1).Value
+        If periodNum = "" Then Exit For
+        
+        ' 查找对应的开奖结果
+        drawPeriod = ""
+        For j = 5 To 54
+            If ws开奖.Cells(j, 1).Value = periodNum And _
+               ws开奖.Cells(j, 2).Value <> "" Then
+                drawPeriod = periodNum
+                
+                ' 获取开奖号码
+                ReDim drawReds(1 To 6)
+                For k = 1 To 6
+                    drawReds(k) = ws开奖.Cells(j, 1 + k).Value
+                Next k
+                drawBlue = ws开奖.Cells(j, 8).Value
+                
+                Exit For
+            End If
+        Next j
+        
+        If drawPeriod <> "" Then
+            ' 获取投注号码
+            ReDim betReds(1 To 6)
+            For k = 1 To 6
+                betReds(k) = ws方案.Cells(i, 3 + k).Value
+            Next k
+            betBlue = ws方案.Cells(i, 10).Value
+            
+            ' 计算匹配数
+            matchRed = CountMatches(betReds, drawReds)
+            matchBlue = (betBlue = drawBlue)
+            
+            ' 判断中奖等级
+            prizeLevel = GetPrizeLevel(matchRed, matchBlue)
+            
+            ' 记录到历史
+            If prizeLevel <> "" Then
+                ws历史.Cells(lastHistoryRow, 1).Value = periodNum
+                ws历史.Cells(lastHistoryRow, 2).Value = ws方案.Cells(i, 2).Value
+                ws历史.Cells(lastHistoryRow, 3).Value = Join_Array(betReds)
+                ws历史.Cells(lastHistoryRow, 4).Value = betBlue
+                ws历史.Cells(lastHistoryRow, 5).Value = Join_Array(drawReds)
+                ws历史.Cells(lastHistoryRow, 6).Value = drawBlue
+                ws历史.Cells(lastHistoryRow, 7).Value = matchRed
+                ws历史.Cells(lastHistoryRow, 8).Value = IIf(matchBlue, "✓", "")
+                ws历史.Cells(lastHistoryRow, 9).Value = prizeLevel
+                ws历史.Cells(lastHistoryRow, 10).Value = GetPrizeMoney(prizeLevel)
+                ws历史.Cells(lastHistoryRow, 11).Value = 2  ' 投入2元
+                ws历史.Cells(lastHistoryRow, 12).Value = _
+                    ws历史.Cells(lastHistoryRow, 10).Value - 2
+                
+                lastHistoryRow = lastHistoryRow + 1
+            End If
+        End If
+    Next i
+    
+    Application.ScreenUpdating = True
+    MsgBox "中奖判断完成！", vbInformation
+End Sub
+
+' 计算红球匹配数
+Function CountMatches(bet() As Integer, draw() As Integer) As Integer
+    Dim count As Integer, i As Integer, j As Integer
+    count = 0
+    For i = 1 To 6
+        For j = 1 To 6
+            If bet(i) = draw(j) Then
+                count = count + 1
+                Exit For
+            End If
+        Next j
+    Next i
+    CountMatches = count
+End Function
+
+' 判断中奖等级
+Function GetPrizeLevel(redMatch As Integer, blueMatch As Boolean) As String
+    If redMatch = 6 And blueMatch Then
+        GetPrizeLevel = "一等奖"
+    ElseIf redMatch = 6 And Not blueMatch Then
+        GetPrizeLevel = "二等奖"
+    ElseIf redMatch = 5 And blueMatch Then
+        GetPrizeLevel = "三等奖"
+    ElseIf (redMatch = 5 And Not blueMatch) Or (redMatch = 4 And blueMatch) Then
+        GetPrizeLevel = "四等奖"
+    ElseIf (redMatch = 4 And Not blueMatch) Or (redMatch = 3 And blueMatch) Then
+        GetPrizeLevel = "五等奖"
+    ElseIf (redMatch = 2 And blueMatch) Or (redMatch = 1 And blueMatch) Or (redMatch = 0 And blueMatch) Then
+        GetPrizeLevel = "六等奖"
+    Else
+        GetPrizeLevel = ""
+    End If
+End Function
+
+' 获取奖金金额（示例金额）
+Function GetPrizeMoney(level As String) As Long
+    Select Case level
+        Case "一等奖"
+            GetPrizeMoney = 5000000
+        Case "二等奖"
+            GetPrizeMoney = 200000
+        Case "三等奖"
+            GetPrizeMoney = 3000
+        Case "四等奖"
+            GetPrizeMoney = 200
+        Case "五等奖"
+            GetPrizeMoney = 10
+        Case "六等奖"
+            GetPrizeMoney = 5
+        Case Else
+            GetPrizeMoney = 0
+    End Select
+End Function
+
+' 数组转字符串
+Function Join_Array(arr() As Integer) As String
+    Dim result As String, i As Integer
+    result = Format(arr(1), "00")
+    For i = 2 To 6
+        result = result & "," & Format(arr(i), "00")
+    Next i
+    Join_Array = result
+End Function
+
+' 初始化随机数种子
+Sub Auto_Open()
+    Randomize
+End Sub
